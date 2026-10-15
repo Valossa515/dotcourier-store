@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="DotCourier.EntityFrameworkCore" />
+    <PackageReference Include="DotCourier.Outbox.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
   </ItemGroup>
 

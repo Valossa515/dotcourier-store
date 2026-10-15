@@ -44,8 +44,10 @@ Store.Api             HTTP adapter: endpoints, Swagger, DotCourier configuration
 Dependencies point inwards: `Api → Infrastructure → Application → Domain`. The domain throws
 `DomainException`; the application turns it into an HTTP answer with `DomainExceptionBehavior`.
 Every command runs in a database transaction (`AddPersistenceTransactions`, from
-DotCourier.EntityFrameworkCore), and domain events are published as DotCourier notifications only
-**after the commit**.
+DotCourier.EntityFrameworkCore). Domain events go through the **transactional outbox**
+(`AddDomainEventOutbox`, from DotCourier.Outbox.EntityFrameworkCore): `UnitOfWork` saves them with
+the data, in the same transaction, and a background processor delivers them as DotCourier
+notifications, retrying until the handlers succeed.
 
 ## Where each DotCourier feature shows up
 
@@ -64,7 +66,7 @@ DotCourier.EntityFrameworkCore), and domain events are published as DotCourier n
 | Bulkhead | `GetSalesReport` (1 at a time) | two reports with `simulatedDelayMs=1500` at once → 503 |
 | `[HandlerTimeout]` | `GetSalesReport` (3 s) | `simulatedDelayMs=5000` → 504 |
 | Transaction per command | every command; `PayOrder` is `[NotTransactional]` | `POST /api/products/import` with a duplicate SKU in the 2nd item → 409, and the 1st item is not kept |
-| After-commit actions | `StoreDbContext.CommitAsync` (`ICourierTransaction.OnCommittedAsync`) | a rolled-back import publishes no `ProductCreated` |
+| Transactional outbox | `UnitOfWork` (`IOutbox`), `courier_outbox` table | `GET /api/simulation/outbox`: events go from pending to processed; a rolled-back import stores none |
 | Notifications | `SendOrderConfirmation`, `SendPaymentReceipt` | place and pay an order, then see the 📧 lines in the console |
 | Open generic handler | `AuditTrail<T>` | every notification logs a `📒 [audit]` line |
 | Translated messages | `LocalizedMessages` + `Resources/Messages*.resx` | send `Accept-Language: pt-BR` and errors come back in Portuguese, with codes |
