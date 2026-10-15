@@ -24,8 +24,14 @@ call() { # method path [json] [extra curl args...]
   fi
 }
 body() { cat /tmp/st_body; }
-PY="$(command -v python3 || command -v python)"
-json() { "$PY" -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
+# First Python that actually runs (on Windows "python3" can be a Microsoft Store stub that only prints a message).
+PY=""
+for candidate in python3 python; do
+  if "$candidate" -c "import sys" >/dev/null 2>&1; then PY="$candidate"; break; fi
+done
+[ -n "$PY" ] || { echo "Python is required"; exit 1; }
+json() { "$PY" -c "import sys,json; d=json.load(sys.stdin); print($1)" | tr -d '\r'; } # Windows Pythons may print CRLF
+
 
 PRODUCTS=$(curl -s "$BASE/api/products")
 KB=$(echo "$PRODUCTS" | json "[p['id'] for p in d['data'] if p['sku']=='KB-001'][0]")
