@@ -45,6 +45,14 @@ public static class ProductEndpoints
             .Produces<Response<object>>(StatusCodes.Status400BadRequest)
             .Produces<Response<object>>(StatusCodes.Status409Conflict);
 
+        products.MapPost("/import", (CreateProductRequest[] body, ICourier courier, CancellationToken ct) =>
+                courier.Dispatch(new ImportProducts(body.Select(p => new CreateProduct(p.Name, p.Sku, p.Price, p.Stock)).ToList()), ct).ToResult())
+            .WithSummary("Import products (all or nothing)")
+            .WithDescription("One transaction for the whole import: a duplicate SKU or an invalid item rolls back the products already saved (409 / 400). See 'Transaction rolled back' in the log.")
+            .Produces<Response<IReadOnlyList<ProductDto>>>(StatusCodes.Status201Created)
+            .Produces<Response<object>>(StatusCodes.Status400BadRequest)
+            .Produces<Response<object>>(StatusCodes.Status409Conflict);
+
         products.MapPut("/{id:guid}/price", (Guid id, ChangePriceRequest body, ICourier courier, CancellationToken ct) =>
                 courier.Dispatch(new ChangePrice(id, body.NewPrice), ct).ToResult())
             .WithSummary("Change a product's price")

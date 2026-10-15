@@ -64,6 +64,11 @@ public sealed class PlaceOrderHandler(IProductRepository products, IOrderReposit
 // Pay an order: calls an unreliable payment gateway, protected by retry + circuit breaker
 // ---------------------------------------------------------------------------------------------
 
+/// <summary>
+/// [NotTransactional]: the handler waits on an external gateway (and retry may wait more), which must
+/// not hold a database transaction (and SQLite's write lock) open. It saves once, at the end.
+/// </summary>
+[NotTransactional]
 public sealed record PayOrder(Guid OrderId) : ICommand<Response<OrderDto>>;
 
 public sealed class PayOrderHandler(IOrderRepository orders, IPaymentGateway gateway, IUnitOfWork unitOfWork, ILogger<PayOrderHandler> logger)

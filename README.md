@@ -43,7 +43,9 @@ Store.Api             HTTP adapter: endpoints, Swagger, DotCourier configuration
 
 Dependencies point inwards: `Api → Infrastructure → Application → Domain`. The domain throws
 `DomainException`; the application turns it into an HTTP answer with `DomainExceptionBehavior`.
-Domain events are published after `SaveChanges` as DotCourier notifications.
+Every command runs in a database transaction (`AddPersistenceTransactions`, from
+DotCourier.EntityFrameworkCore), and domain events are published as DotCourier notifications only
+**after the commit**.
 
 ## Where each DotCourier feature shows up
 
@@ -61,6 +63,8 @@ Domain events are published after `SaveChanges` as DotCourier notifications.
 | Rate limiter | `ListProducts` (5 per 10 s) | 6 different searches in a row → 429 |
 | Bulkhead | `GetSalesReport` (1 at a time) | two reports with `simulatedDelayMs=1500` at once → 503 |
 | `[HandlerTimeout]` | `GetSalesReport` (3 s) | `simulatedDelayMs=5000` → 504 |
+| Transaction per command | every command; `PayOrder` is `[NotTransactional]` | `POST /api/products/import` with a duplicate SKU in the 2nd item → 409, and the 1st item is not kept |
+| After-commit actions | `StoreDbContext.CommitAsync` (`ICourierTransaction.OnCommittedAsync`) | a rolled-back import publishes no `ProductCreated` |
 | Notifications | `SendOrderConfirmation`, `SendPaymentReceipt` | place and pay an order, then see the 📧 lines in the console |
 | Open generic handler | `AuditTrail<T>` | every notification logs a `📒 [audit]` line |
 | Translated messages | `LocalizedMessages` + `Resources/Messages*.resx` | send `Accept-Language: pt-BR` and errors come back in Portuguese, with codes |
@@ -68,7 +72,7 @@ Domain events are published after `SaveChanges` as DotCourier notifications.
 ## Logs
 
 The console shows what DotCourier is doing: `[Courier] --> Handling ...`, cache hits, retries
-(`attempt 2/3`), the circuit opening, e-mails and the audit trail. No customer data, such as
+(`attempt 2/3`), transactions (`Transaction committed` / `rolled back`), the circuit opening, e-mails and the audit trail. No customer data, such as
 e-mail addresses, goes to the log.
 
 ## License
