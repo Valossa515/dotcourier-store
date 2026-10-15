@@ -1,3 +1,4 @@
+using DotCourier;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -23,6 +24,14 @@ public static class DependencyInjection
         services.AddSingleton<IEmailSender, LoggingEmailSender>();
         return services;
     }
+
+    /// <summary>
+    /// Runs every command in a <see cref="StoreDbContext"/> transaction (DotCourier.EntityFrameworkCore):
+    /// committed when the use case succeeds, rolled back when it throws or answers an error.
+    /// Lives here, not in Store.Application, so the use cases do not depend on EF Core.
+    /// </summary>
+    public static CourierConfiguration AddPersistenceTransactions(this CourierConfiguration courier) =>
+        courier.AddEntityFrameworkTransactions<StoreDbContext>();
 
     /// <summary>Creates the SQLite database (optionally from scratch) and seeds a small catalog.</summary>
     public static async Task InitializeDatabaseAsync(this IServiceProvider services, bool reset)

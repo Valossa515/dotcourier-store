@@ -50,6 +50,13 @@ s=$(call PUT "/api/products/$KB/price" '{"newPrice":0}'); check "preço inválid
 s=$(call PUT "/api/products/$KB/price" '{"newPrice":199.9}'); check "trocar preço -> 200 (invalida o cache)" 200 "$s" "$(body)"
 s=$(call GET "/api/products/$KB"); b=$(body); check "GET produto depois da troca" 200 "$s" "$b"; has "  ...já com o preço novo" '"price":199.9' "$b"
 
+echo; echo "== 1b. Transação: importação tudo ou nada =="
+s=$(call POST /api/products/import '[{"name":"Mousepad","sku":"IMP-001","price":49.9,"stock":30},{"name":"Webcam","sku":"IMP-002","price":299,"stock":8}]'); b=$(body); check "importar 2 produtos -> 201" 201 "$s" "$b"; has "  ...os dois criados" '"sku":"IMP-002"' "$b"
+s=$(call POST /api/products/import '[{"name":"Microfone","sku":"IMP-003","price":199,"stock":4},{"name":"Teclado clone","sku":"KB-001","price":10,"stock":1}]'); b=$(body); check "importar com SKU repetido no 2º item -> 409" 409 "$s" "$b"; has "  ...aponta o item e o código" 'Item 2: .*PRD-SKU-TAKEN' "$b"
+s=$(call POST /api/products '{"name":"Microfone","sku":"IMP-003","price":199,"stock":4}'); check "  ...o 1º item foi desfeito: criar IMP-003 de novo -> 201" 201 "$s" "$(body)"
+s=$(call POST /api/products/import '[{"name":"Caixa de som","sku":"IMP-004","price":159,"stock":6},{"name":"","sku":"IMP-005","price":0,"stock":1}]'); b=$(body); check "importar com item inválido -> 400 (validação do item)" 400 "$s" "$b"
+s=$(call POST /api/products '{"name":"Caixa de som","sku":"IMP-004","price":159,"stock":6}'); check "  ...IMP-004 também foi desfeito -> 201" 201 "$s" "$(body)"
+
 echo; echo "== 2. Pedidos: idempotência e regras de domínio =="
 ORDER_JSON="{\"customerEmail\":\"ana@example.com\",\"items\":[{\"productId\":\"$KB\",\"quantity\":2}]}"
 s=$(call POST /api/orders "$ORDER_JSON"); b=$(body); check "pedido sem Idempotency-Key -> 400" 400 "$s" "$b"; has "  ...código ORD-KEY" 'ORD-KEY' "$b"
@@ -95,7 +102,11 @@ wait; check "o 1º relatório termina normalmente" 200 "$(cat /tmp/st_rep1_statu
 echo; echo "== 5. Rate limit da listagem =="
 sleep 11 # new 10 s window
 for i in 1 2 3 4 5; do s=$(call GET "/api/products?search=termo$i"); check "listagem $i/5 (busca nova, sem cache)" 200 "$s" "$(body)"; done
-s=$(call GET "/api/products?search=termo6" "" -H 'Accept-Language: pt-BR'); b=$(body); check "6ª listagem -> 429" 429 "$s" "$b"; has "  ...mensagem em pt-BR, código RATE-LIMITED" 'Muitas requisi.*RATE-LIMITED' "$b"
+# Fixed 10 s windows on their own timer: the 5 calls above may straddle a reset, so a single 6th call
+# can still get a permit. 6 more calls in a burst span at most one reset: at least one must be refused.
+s=200; b=""
+for i in 6 7 8 9 10 11; do s=$(call GET "/api/products?search=termo$i" "" -H 'Accept-Language: pt-BR'); b=$(body); [ "$s" = 429 ] && break; done
+check "listagens além do limite -> 429" 429 "$s" "$b"; has "  ...mensagem em pt-BR, código RATE-LIMITED" 'Muitas requisi.*RATE-LIMITED' "$b"
 s=$(call GET "/api/products?search=termo1"); check "busca repetida vem do cache e não é barrada" 200 "$s" "$(body)"
 
 echo; echo "== 6. Mensagens no idioma do request =="
@@ -110,6 +121,12 @@ if [ -n "$LOG" ]; then
   has "auditoria genérica recebeu OrderPlaced" 'DomainEventNotification<OrderPlaced>' "$L"
   has "auditoria genérica recebeu OrderPaid" 'DomainEventNotification<OrderPaid>' "$L"
   has "circuito abriu para PayOrder" 'Circuit opened for PayOrder' "$L"
+  has "transação confirmada para ImportProducts" 'Transaction committed for ImportProducts' "$L"
+  has "rollback por resposta de erro (SKU repetido)" 'Transaction rolled back for ImportProducts (error response)' "$L"
+  has "rollback por exceção (item inválido)" 'Transaction rolled back for ImportProducts (exception)' "$L"
+  # 4 seeded + HUB-007 + IMP-001/002 + IMP-003/004 created again; the 2 rolled-back imports publish nothing.
+  CREATED=$(echo "$L" | grep -c 'DomainEventNotification<ProductCreated>')
+  check "ProductCreated só depois do commit (desfeitos não publicam)" 9 "$CREATED" "eventos ProductCreated no log: $CREATED"
   if echo "$L" | grep -q "@example.com"; then FAIL=$((FAIL+1)); echo "❌ e-mail de cliente apareceu no log"; else PASS=$((PASS+1)); echo "✅ nenhum e-mail de cliente no log"; fi
 fi
 

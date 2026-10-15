@@ -41,8 +41,10 @@ Store.Api             Adaptador HTTP: endpoints, Swagger e configuração do Dot
 ```
 
 As dependências apontam para dentro: `Api → Infrastructure → Application → Domain`. O domínio lança
-`DomainException`, e a aplicação a converte em resposta HTTP com o `DomainExceptionBehavior`. Os
-eventos de domínio são publicados depois do `SaveChanges` como notificações do DotCourier.
+`DomainException`, e a aplicação a converte em resposta HTTP com o `DomainExceptionBehavior`. Todo
+command roda numa transação do banco (`AddPersistenceTransactions`, do
+DotCourier.EntityFrameworkCore), e os eventos de domínio só são publicados como notificações do
+DotCourier **depois do commit**.
 
 ## Onde cada funcionalidade do DotCourier aparece
 
@@ -60,6 +62,8 @@ eventos de domínio são publicados depois do `SaveChanges` como notificações 
 | Rate limiter | `ListProducts` (5 a cada 10 s) | 6 buscas diferentes seguidas → 429 |
 | Bulkhead | `GetSalesReport` (1 por vez) | dois relatórios com `simulatedDelayMs=1500` ao mesmo tempo → 503 |
 | `[HandlerTimeout]` | `GetSalesReport` (3 s) | `simulatedDelayMs=5000` → 504 |
+| Transação por command | todos os commands; `PayOrder` é `[NotTransactional]` | `POST /api/products/import` com SKU repetido no 2º item → 409, e o 1º item não fica salvo |
+| Ações pós-commit | `StoreDbContext.CommitAsync` (`ICourierTransaction.OnCommittedAsync`) | um import desfeito não publica `ProductCreated` |
 | Notificações | `SendOrderConfirmation`, `SendPaymentReceipt` | faça e pague um pedido e veja os 📧 no console |
 | Handler genérico aberto | `AuditTrail<T>` | toda notificação gera um `📒 [audit]` no console |
 | Mensagens traduzidas | `LocalizedMessages` + `Resources/Messages*.resx` | envie `Accept-Language: pt-BR` e os erros vêm em português, com código |
@@ -67,7 +71,7 @@ eventos de domínio são publicados depois do `SaveChanges` como notificações 
 ## Logs
 
 O console mostra o que o DotCourier está fazendo: `[Courier] --> Handling ...`, acertos de cache,
-retries (`attempt 2/3`), circuito abrindo, e-mails e auditoria. Nenhum dado de cliente, como e-mail,
+retries (`attempt 2/3`), transações (`Transaction committed` / `rolled back`), circuito abrindo, e-mails e auditoria. Nenhum dado de cliente, como e-mail,
 vai para o log.
 
 ## Licença

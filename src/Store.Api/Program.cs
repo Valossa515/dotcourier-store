@@ -6,7 +6,11 @@ using Store.Infrastructure;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
-builder.Services.AddApplication(cfg => LocalizedMessages.Apply(cfg.Messages));
+builder.Services.AddApplication(cfg =>
+{
+    LocalizedMessages.Apply(cfg.Messages);
+    cfg.AddPersistenceTransactions(); // every command in a database transaction
+});
 builder.Services.AddInfrastructure(builder.Configuration.GetConnectionString("Store") ?? "Data Source=store.db");
 
 var app = builder.Build();

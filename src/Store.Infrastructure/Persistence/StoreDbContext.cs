@@ -1,4 +1,5 @@
 using DotCourier;
+using DotCourier.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Store.Application.Abstractions;
 using Store.Application.Common;
@@ -8,7 +9,7 @@ using Store.Domain.Orders;
 
 namespace Store.Infrastructure.Persistence;
 
-public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options, IPublisher publisher)
+public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options, IPublisher publisher, ICourierTransaction transaction)
     : DbContext(options), IUnitOfWork
 {
     public DbSet<Product> Products => Set<Product>();
@@ -17,8 +18,10 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options, IPu
 
     /// <summary>
     /// Saves, then publishes the domain events raised by the saved aggregates as DotCourier
-    /// notifications (<see cref="DomainEventNotification{TEvent}"/>). Publishing after the save means
-    /// handlers never see changes that were rolled back.
+    /// notifications (<see cref="DomainEventNotification{TEvent}"/>). Inside a command the save is part
+    /// of the command's transaction, so the events wait for its commit
+    /// (<see cref="ICourierTransaction.OnCommittedAsync"/>): a command that fails later, after saving,
+    /// sends no e-mail about data that was rolled back.
     /// </summary>
     public async Task CommitAsync(CancellationToken ct)
     {
@@ -30,7 +33,11 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options, IPu
         aggregates.ForEach(a => a.ClearDomainEvents());
 
         await SaveChangesAsync(ct);
+        await transaction.OnCommittedAsync(token => PublishAsync(events, token), ct);
+    }
 
+    private async Task PublishAsync(List<IDomainEvent> events, CancellationToken ct)
+    {
         foreach (var domainEvent in events)
         {
             var notification = Activator.CreateInstance(typeof(DomainEventNotification<>).MakeGenericType(domainEvent.GetType()), domainEvent)!;

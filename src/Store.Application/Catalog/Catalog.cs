@@ -68,6 +68,44 @@ public sealed class CreateProductHandler(IProductRepository products, IUnitOfWor
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Import: all or nothing, thanks to the command's transaction
+// ---------------------------------------------------------------------------------------------
+
+/// <summary>
+/// Creates several products by sending <see cref="CreateProduct"/> for each one. The nested commands
+/// join this command's transaction, so one bad item (duplicate SKU, invalid field) rolls back the
+/// products already saved: the import is all or nothing.
+/// </summary>
+[InvalidatesCache(typeof(ListProducts))]
+public sealed record ImportProducts(IReadOnlyList<CreateProduct> Products) : ICommand<Response<IReadOnlyList<ProductDto>>>;
+
+public sealed class ImportProductsValidator : AbstractValidator<ImportProducts>
+{
+    public ImportProductsValidator() => RuleFor(x => x.Products).NotEmpty().Must(p => p.Count <= 50).WithErrorCode("PRD-IMPORT-SIZE");
+}
+
+public sealed class ImportProductsHandler(ISender sender) : ICommandHandler<ImportProducts, Response<IReadOnlyList<ProductDto>>>
+{
+    public async Task<Response<IReadOnlyList<ProductDto>>> Handle(ImportProducts command, CancellationToken ct)
+    {
+        var imported = new List<ProductDto>();
+        for (var i = 0; i < command.Products.Count; i++)
+        {
+            // Invalid fields throw (400) and roll back too; business failures come back as a Response.
+            var result = await sender.Send(command.Products[i], ct);
+            if (!result.IsSuccess)
+            {
+                return Response.Failure($"Item {i + 1}: {result.Error}", result.StatusCode, code: result.ErrorCode);
+            }
+
+            imported.Add(result.Data!);
+        }
+
+        return Response.Created<IReadOnlyList<ProductDto>>(imported);
+    }
+}
+
 [InvalidatesCache(typeof(GetProduct), typeof(ListProducts))]
 public sealed record ChangePrice(Guid ProductId, decimal NewPrice) : ICommand<Response<ProductDto>>;
 
