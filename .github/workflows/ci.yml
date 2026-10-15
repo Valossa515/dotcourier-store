@@ -19,7 +19,7 @@ jobs:
       - name: Build
         run: dotnet build -c Release
 
-      - name: Start the API (Development: fresh database, debug cache logs)
+      - name: Start the API (Development, fresh database, debug cache logs)
         working-directory: src/Store.Api
         env:
           ASPNETCORE_ENVIRONMENT: Development
