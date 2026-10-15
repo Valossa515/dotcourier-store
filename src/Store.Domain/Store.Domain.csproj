@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The domain has no dependencies: no DotCourier, no EF Core, no ASP.NET. -->
+
+</Project>

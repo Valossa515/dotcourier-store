@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Store.Domain\Store.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DotCourier" />
+    <PackageReference Include="DotCourier.Caching" />
+    <PackageReference Include="DotCourier.FluentValidation" />
+    <PackageReference Include="DotCourier.Resilience" />
+    <PackageReference Include="FluentValidation" />
+  </ItemGroup>
+
+</Project>

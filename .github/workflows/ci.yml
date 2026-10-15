@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build -c Release
+
+      - name: Start the API (Development: fresh database, debug cache logs)
+        working-directory: src/Store.Api
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          ASPNETCORE_URLS: http://localhost:5199
+        run: |
+          nohup dotnet run -c Release --no-build --no-launch-profile > "$RUNNER_TEMP/api.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -s -o /dev/null http://localhost:5199/api/products && exit 0
+            sleep 1
+          done
+          echo "API did not start"; cat "$RUNNER_TEMP/api.log"; exit 1
+
+      - name: End-to-end smoke test
+        run: bash scripts/smoke.sh http://localhost:5199 "$RUNNER_TEMP/api.log"
+
+      - name: API log
+        if: always()
+        run: cat "$RUNNER_TEMP/api.log"
