@@ -15,7 +15,7 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, string connectionString)
     {
         services.AddDbContext<StoreDbContext>(o => o.UseSqlite(connectionString));
-        services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<StoreDbContext>());
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<IOrderRepository, OrderRepository>();
 
@@ -32,6 +32,14 @@ public static class DependencyInjection
     /// </summary>
     public static CourierConfiguration AddPersistenceTransactions(this CourierConfiguration courier) =>
         courier.AddEntityFrameworkTransactions<StoreDbContext>();
+
+    /// <summary>
+    /// Domain events go through the transactional outbox (DotCourier.Outbox.EntityFrameworkCore): stored
+    /// with the data, delivered in the background at least once. The processor wakes up on every commit;
+    /// the 2 s poll only catches what is left (e.g. events seeded before the app started).
+    /// </summary>
+    public static CourierConfiguration AddDomainEventOutbox(this CourierConfiguration courier) =>
+        courier.AddOutbox<StoreDbContext>(o => o.PollInterval = TimeSpan.FromSeconds(2));
 
     /// <summary>Creates the SQLite database (optionally from scratch) and seeds a small catalog.</summary>
     public static async Task InitializeDatabaseAsync(this IServiceProvider services, bool reset)
@@ -54,7 +62,7 @@ public static class DependencyInjection
             Product.Create("Wireless mouse", "MS-001", new Money(99.90m), 25),
             Product.Create("27\" monitor", "MN-027", new Money(1899.00m), 5),
             Product.Create("Headset", "HS-001", new Money(399.00m), 0));
-        await db.CommitAsync(CancellationToken.None);
+        await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().CommitAsync(CancellationToken.None);
     }
 }
 

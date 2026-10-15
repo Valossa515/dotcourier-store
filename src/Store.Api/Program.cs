@@ -10,6 +10,7 @@ builder.Services.AddApplication(cfg =>
 {
     LocalizedMessages.Apply(cfg.Messages);
     cfg.AddPersistenceTransactions(); // every command in a database transaction
+    cfg.AddDomainEventOutbox();       // domain events stored with the data, delivered in the background
 });
 builder.Services.AddInfrastructure(builder.Configuration.GetConnectionString("Store") ?? "Data Source=store.db");
 

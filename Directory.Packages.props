@@ -5,12 +5,13 @@
 
   <ItemGroup>
     <!-- DotCourier, consumed from nuget.org exactly as any application would -->
-    <PackageVersion Include="DotCourier" Version="0.6.0" />
-    <PackageVersion Include="DotCourier.AspNetCore" Version="0.6.0" />
-    <PackageVersion Include="DotCourier.Caching" Version="0.6.0" />
-    <PackageVersion Include="DotCourier.EntityFrameworkCore" Version="0.6.0" />
-    <PackageVersion Include="DotCourier.FluentValidation" Version="0.6.0" />
-    <PackageVersion Include="DotCourier.Resilience" Version="0.6.0" />
+    <PackageVersion Include="DotCourier" Version="0.7.0" />
+    <PackageVersion Include="DotCourier.AspNetCore" Version="0.7.0" />
+    <PackageVersion Include="DotCourier.Caching" Version="0.7.0" />
+    <PackageVersion Include="DotCourier.EntityFrameworkCore" Version="0.7.0" />
+    <PackageVersion Include="DotCourier.FluentValidation" Version="0.7.0" />
+    <PackageVersion Include="DotCourier.Outbox.EntityFrameworkCore" Version="0.7.0" />
+    <PackageVersion Include="DotCourier.Resilience" Version="0.7.0" />
 
     <PackageVersion Include="FluentValidation" Version="12.2.0" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />

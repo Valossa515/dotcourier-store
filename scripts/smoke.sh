@@ -113,8 +113,17 @@ echo; echo "== 6. Mensagens no idioma do request =="
 s=$(call POST /api/products '{"name":"","sku":"","price":0,"stock":0}' -H 'Accept-Language: pt-BR'); b=$(body); check "validação em pt-BR" 400 "$s" "$b"; has "  ...resumo traduzido com a contagem" 'campo(s) inv' "$b"; has "  ...código VAL-000" '"errorCode":"VAL-000"' "$b"
 s=$(call POST /api/products '{"name":"","sku":"","price":0,"stock":0}' -H 'Accept-Language: en-US'); b=$(body); check "validação em en-US" 400 "$s" "$b"; has "  ...resumo em inglês" 'invalid field' "$b"
 
+echo; echo "== 7. Outbox: eventos gravados com os dados e entregues em background =="
+# Delivery is asynchronous: wait (up to 15 s) until nothing is pending.
+for i in $(seq 1 30); do OB=$(curl -s "$BASE/api/simulation/outbox"); [ "$(echo "$OB" | json "d['pending']+d['processing']")" = "0" ] && break; sleep 0.5; done
+check "outbox sem mensagens pendentes" 0 "$(echo "$OB" | json "d['pending']+d['processing']")" "$OB"
+check "  ...nenhuma mensagem falhou" 0 "$(echo "$OB" | json "d['failed']")" "$OB"
+PROCESSED=$(echo "$OB" | json "d['processed']")
+if [ "$PROCESSED" -gt 0 ]; then PASS=$((PASS+1)); echo "✅   ...$PROCESSED eventos entregues"; else FAIL=$((FAIL+1)); echo "❌   ...nenhum evento entregue"; fi
+
 if [ -n "$LOG" ]; then
-  echo; echo "== 7. Eventos de domínio e notificações (log) =="
+  echo; echo "== 8. Eventos de domínio e notificações (log) =="
+  has "processador do outbox iniciou" 'Outbox processor started for StoreDbContext' "$(cat "$LOG")"
   L=$(cat "$LOG")
   has "e-mail de confirmação do pedido" 'We received your order' "$L"
   has "e-mail de pagamento confirmado" 'Payment confirmed' "$L"
@@ -124,9 +133,9 @@ if [ -n "$LOG" ]; then
   has "transação confirmada para ImportProducts" 'Transaction committed for ImportProducts' "$L"
   has "rollback por resposta de erro (SKU repetido)" 'Transaction rolled back for ImportProducts (error response)' "$L"
   has "rollback por exceção (item inválido)" 'Transaction rolled back for ImportProducts (exception)' "$L"
-  # 4 seeded + HUB-007 + IMP-001/002 + IMP-003/004 created again; the 2 rolled-back imports publish nothing.
+  # 4 seeded + HUB-007 + IMP-001/002 + IMP-003/004 created again; the 2 rolled-back imports store no event.
   CREATED=$(echo "$L" | grep -c 'DomainEventNotification<ProductCreated>')
-  check "ProductCreated só depois do commit (desfeitos não publicam)" 9 "$CREATED" "eventos ProductCreated no log: $CREATED"
+  check "ProductCreated só dos commits (imports desfeitos não gravam evento)" 9 "$CREATED" "eventos ProductCreated no log: $CREATED"
   if echo "$L" | grep -q "@example.com"; then FAIL=$((FAIL+1)); echo "❌ e-mail de cliente apareceu no log"; else PASS=$((PASS+1)); echo "✅ nenhum e-mail de cliente no log"; fi
 fi
 

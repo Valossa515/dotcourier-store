@@ -1,10 +1,13 @@
 using DotCourier;
+using DotCourier.Outbox;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Store.Application.Catalog;
 using Store.Application.Common;
 using Store.Application.Orders;
 using Store.Application.Reports;
 using Store.Infrastructure.Payments;
+using Store.Infrastructure.Persistence;
 
 namespace Store.Api.Endpoints;
 
@@ -135,5 +138,18 @@ public static class SimulationEndpoints
             })
             .WithSummary("Make the payment gateway Healthy, Flaky (next N calls fail) or Down")
             .WithDescription("Flaky with failures=2: paying succeeds thanks to retry. Down: payments fail, and after 3 failed payments the circuit opens (503).");
+
+        simulation.MapGet("/outbox", async (StoreDbContext db, CancellationToken ct) =>
+            {
+                var counts = await db.Set<OutboxMessage>()
+                    .GroupBy(m => m.Status)
+                    .Select(g => new { Status = g.Key, Count = g.Count() })
+                    .ToListAsync(ct);
+                return Results.Ok(Enum.GetValues<OutboxStatus>().ToDictionary(
+                    s => s.ToString().ToLowerInvariant(),
+                    s => counts.FirstOrDefault(c => c.Status == s)?.Count ?? 0));
+            })
+            .WithSummary("Outbox messages per status")
+            .WithDescription("Domain events are stored in the courier_outbox table with the data and delivered in the background: pending ones become processed within moments.");
     }
 }

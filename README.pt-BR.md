@@ -43,8 +43,10 @@ Store.Api             Adaptador HTTP: endpoints, Swagger e configuração do Dot
 As dependências apontam para dentro: `Api → Infrastructure → Application → Domain`. O domínio lança
 `DomainException`, e a aplicação a converte em resposta HTTP com o `DomainExceptionBehavior`. Todo
 command roda numa transação do banco (`AddPersistenceTransactions`, do
-DotCourier.EntityFrameworkCore), e os eventos de domínio só são publicados como notificações do
-DotCourier **depois do commit**.
+DotCourier.EntityFrameworkCore). Os eventos de domínio passam pelo **transactional outbox**
+(`AddDomainEventOutbox`, do DotCourier.Outbox.EntityFrameworkCore): o `UnitOfWork` grava os eventos
+junto com os dados, na mesma transação, e um processador em background os entrega como notificações
+do DotCourier, tentando de novo até os handlers darem certo.
 
 ## Onde cada funcionalidade do DotCourier aparece
 
@@ -63,7 +65,7 @@ DotCourier **depois do commit**.
 | Bulkhead | `GetSalesReport` (1 por vez) | dois relatórios com `simulatedDelayMs=1500` ao mesmo tempo → 503 |
 | `[HandlerTimeout]` | `GetSalesReport` (3 s) | `simulatedDelayMs=5000` → 504 |
 | Transação por command | todos os commands; `PayOrder` é `[NotTransactional]` | `POST /api/products/import` com SKU repetido no 2º item → 409, e o 1º item não fica salvo |
-| Ações pós-commit | `StoreDbContext.CommitAsync` (`ICourierTransaction.OnCommittedAsync`) | um import desfeito não publica `ProductCreated` |
+| Transactional outbox | `UnitOfWork` (`IOutbox`), tabela `courier_outbox` | `GET /api/simulation/outbox`: os eventos passam de pending para processed; um import desfeito não grava nenhum |
 | Notificações | `SendOrderConfirmation`, `SendPaymentReceipt` | faça e pague um pedido e veja os 📧 no console |
 | Handler genérico aberto | `AuditTrail<T>` | toda notificação gera um `📒 [audit]` no console |
 | Mensagens traduzidas | `LocalizedMessages` + `Resources/Messages*.resx` | envie `Accept-Language: pt-BR` e os erros vêm em português, com código |
